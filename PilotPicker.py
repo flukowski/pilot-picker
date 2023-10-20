@@ -96,14 +96,11 @@ class PilotPickerClient(discord.Client):
             await LAST_USER.send(f'Mission {crew_role} complete')
             thread = await mission.create_thread(name = 'Applications Closed')
             await thread.send(output)
+            async for threadmsg in schedule.history(limit=1):
+                if (threadmsg.type == discord.MessageType.thread_created):
+                    await threadmsg.delete()
             mission_channel = MISSION_CHANNELS[crew_role]
             await mission_channel.send(RALF_MSG)
-        async for message in schedule.history(limit=20):
-            if (message.type == discord.MessageType.thread_created):
-                await message.delete()
-                time.sleep(15)
-            else:
-                break
         await LAST_USER.send('All done!')
         locked = False
 
