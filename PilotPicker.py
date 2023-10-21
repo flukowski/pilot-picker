@@ -75,33 +75,41 @@ class PilotPickerClient(discord.Client):
                 crew_role = (set(mission.role_mentions).intersection(MISSION_CHANNELS.keys())).pop()
                 print(f'Crew role is {crew_role}')
                 gm = (mission.mentions)[0]
-                await interpoint.get_member(gm.id).add_roles(crew_role)
+                #await interpoint.get_member(gm.id).add_roles(crew_role)
                 print(f'Added {crew_role.name} role to {gm.display_name}')
                 output += (f'GM: <@{gm.id}>\nPlayers: ')
                 applications = (mission.reactions)[0]
                 pilots = [user async for user in applications.users()]
                 pilot_count = 0
+                dupes_needed = False
                 while (pilot_count < NUMBER_OF_PILOTS):
                     if (not pilots):
+                        print(f'Ran out of pilots for {crew_role}')
                         break
-                    temp = random.choice(pilots)
-                    member = interpoint.get_member(temp.id)
-                    if (member and member.id != RALF and member not in dupes):
-                        output += (f'<@{temp.id}> ')
-                        dupes.append(temp)
-                        await interpoint.get_member(temp.id).add_roles(crew_role)
-                        print(f'Added {crew_role.name} role to {temp.display_name}')
+                    member = interpoint.get_member(random.choice(pilots).id)
+                    if (not member or member.id == RALF):
+                        pilots.remove(member)
+                        continue
+                    if (member not in dupes or dupes_needed):
+                        output += (f'<@{member.id}> ')
+                        dupes.append(member)
+                        pilots.remove(member)
+                        #await interpoint.get_member(member.id).add_roles(crew_role)
+                        print(f'Added {crew_role.name} role to {member.display_name}')
                         pilot_count += 1
-                    pilots.remove(temp)
+                        continue
+                    if (set(pilots).issubset(dupes)):
+                        print('Allowing duplicates')
+                        dupes_needed = True
                 await LAST_USER.send(output)
                 await LAST_USER.send(f'Mission {crew_role} complete')
-                thread = await mission.create_thread(name = 'Applications Closed')
-                await thread.send(output)
-                async for threadmsg in schedule.history(limit=1):
-                    if (threadmsg.type == discord.MessageType.thread_created):
-                        await threadmsg.delete()
+                #thread = await mission.create_thread(name = 'Applications Closed')
+                #await thread.send(output)
+                #async for threadmsg in schedule.history(limit=1):
+                    #if (threadmsg.type == discord.MessageType.thread_created):
+                        #await threadmsg.delete()
                 mission_channel = MISSION_CHANNELS[crew_role]
-                await mission_channel.send(RALF_MSG)
+                #await mission_channel.send(RALF_MSG)
             await LAST_USER.send('All done!')
             locked = False
         except Exception as e:
