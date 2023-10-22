@@ -1,4 +1,4 @@
-import os, discord, random, re, time
+import os, discord, random
 from dotenv import load_dotenv
 
 load_dotenv()
