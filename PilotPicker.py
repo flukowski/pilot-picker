@@ -90,7 +90,10 @@ class PilotPickerClient(discord.Client):
                     output += (f'<@{member.id}> ')
                     dupes.append(member)
                     pilots.remove(member)
-                    await interpoint.get_member(member.id).add_roles(crew_role)
+                    try:
+                        await interpoint.get_member(member.id).add_roles(crew_role)
+                    except: 
+                        await LAST_USER.send(f'Failed to add {crew_role} to {member.display_name}')
                     print(f'Added {crew_role.name} role to {member.display_name}')
                     pilot_count += 1
                     continue
@@ -105,7 +108,10 @@ class PilotPickerClient(discord.Client):
                 if (threadmsg.type == discord.MessageType.thread_created):
                     await threadmsg.delete()
             mission_channel = MISSION_CHANNELS[crew_role]
-            await mission_channel.send(RALF_MSG)
+            try:
+                await mission_channel.send(RALF_MSG)
+            except:
+                await LAST_USER.send(f'Failed to send message in {mission_channel.name}')
         await LAST_USER.send('All done!')
         dupes.clear()
         locked = False
