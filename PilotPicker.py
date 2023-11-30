@@ -1,4 +1,4 @@
-import os, discord, random, re
+import os, discord, random, re, asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,6 +9,7 @@ AUTHS = [GENIE, RALF] #accounts authorized to use the bot
 SCHEDULE_CHANNEL_ID = 1085673812663738388 #id of channel where missions get posted
 CONFIRMATION_MSG = None
 INTERPOINT = None
+REPLACEMENT_GRACE_PERIOD = 10 #seconds
 NUMBER_OF_PILOTS = 4 #idk when this wouldn't be 4 but who knows
 MISSION_CHANNELS = {} #key: role, value: channel
 PENDING_REPLACEMENTS = {}#key: message, value: [old member, new member, role]
@@ -51,9 +52,21 @@ class PilotPickerClient(discord.Client):
             else:
                 await channel.send('Bot currently in use, try again later')
         elif (channel.type == discord.ChannelType.public_thread):
-            if (channel.parent.id == 1160477486719701083 and message.mentions):
+            if (channel.parent.id == SCHEDULE_CHANNEL_ID and message.mentions):
                 print(f'Initiating replacement of {message.mentions[0]}')
-                await self.roll_replacement(message)
+                dupes = []
+                while (True):
+                    failed, sent_message, dupes = await self.roll_replacement(message, dupes)
+                    if (failed):
+                        await message.add_reaction('\N{CROSS MARK}')
+                        break
+                    await asyncio.sleep(REPLACEMENT_GRACE_PERIOD)
+                    if (sent_message in PENDING_REPLACEMENTS.keys()):
+                        await channel.send('Rerolling...', delete_after=5)
+                        del PENDING_REPLACEMENTS[sent_message]
+                        await sent_message.delete()
+                    else:
+                        break
 
     async def on_reaction_add(self, reaction, user):
         global CONFIRMATION_MSG, LAST_USER, locked
@@ -69,6 +82,7 @@ class PilotPickerClient(discord.Client):
             if(user == replacement_data[1]):
                 await self.resolve_replacement(replacement_data)
                 del PENDING_REPLACEMENTS[reaction.message]
+                await reaction.message.channel.send('Success!', delete_after=5)
 
     async def roll_pilots(self):
         global SCHEDULE_CHANNEL_ID, NUMBER_OF_PILOTS, LAST_USER, locked
@@ -130,30 +144,35 @@ class PilotPickerClient(discord.Client):
         dupes.clear()
         locked = False
 
-    async def roll_replacement(self, message):
+    async def roll_replacement(self, message, dupes):
         pilot_to_replace = message.mentions[0]
         thread = message.channel
         mission = await thread.parent.fetch_message(thread.id)
-        crew_role = (set(mission.role_mentions).intersection(MISSION_CHANNELS.keys())).pop()
+        crew_role = mission.role_mentions[1]
         print(f'Crew role is {crew_role.name}')
         if (crew_role not in pilot_to_replace.roles):
             print(f'Failed to roll replacement: invalid user')
-            return
+            await thread.send('Failed to roll replacement: invalid user')
+            return True, None, None
         applications = (mission.reactions)[0]
         pilots = [user async for user in applications.users()]
         while (True):
             if (not pilots):
                     print(f'Ran out of pilots to replace for {crew_role.name}')
-                    break
+                    await thread.send(f'Ran out of pilots to replace for {crew_role.name}')
+                    return True, None, None
             member = random.choice(pilots)
-            if (not member or member.id == RALF or crew_role in member.roles):
+            if (not member or member.id == RALF or crew_role in member.roles or member in dupes):
+                    print(f'{member.display_name} chosen')
                     pilots.remove(member)
                     continue
             replacement = member
+            dupes.append(member)
             break
-        sent_message = await thread.send(f'Replacing {pilot_to_replace.display_name}, <@{replacement.id}> you have been rolled as a substitute. Click to accept.')
+        sent_message = await thread.send(f'Replacing {pilot_to_replace.display_name}, <@{replacement.id}> has been rolled as a substitute. Click to accept.')
         await sent_message.add_reaction('\N{WHITE HEAVY CHECK MARK}')
         PENDING_REPLACEMENTS[sent_message] = [pilot_to_replace, replacement, crew_role]
+        return False, sent_message, dupes
     
     async def resolve_replacement(self, replacement_data):
         pilot_to_replace = replacement_data[0]
