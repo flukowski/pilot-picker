@@ -9,7 +9,7 @@ AUTHS = [GENIE, RALF] #accounts authorized to use the bot
 SCHEDULE_CHANNEL_ID = 1085673812663738388 #id of channel where missions get posted
 CONFIRMATION_MSG = None
 INTERPOINT = None
-REPLACEMENT_GRACE_PERIOD = 3600 #seconds
+REPLACEMENT_GRACE_PERIOD = 900 #seconds
 NUMBER_OF_PILOTS = 4 #idk when this wouldn't be 4 but who knows
 MISSION_CHANNELS = {} #key: role, value: channel
 PENDING_REPLACEMENTS = {}#key: message, value: [old member, new member, role]
@@ -169,7 +169,7 @@ class PilotPickerClient(discord.Client):
             replacement = member
             dupes.append(member)
             break
-        sent_message = await thread.send(f'Replacing {pilot_to_replace.display_name}, <@{replacement.id}> has been rolled as a substitute. You have an hour to accept.')
+        sent_message = await thread.send(f'Replacing {pilot_to_replace.display_name}, <@{replacement.id}> has been rolled as a substitute. You have 15 minutes to accept.')
         await sent_message.add_reaction('\N{WHITE HEAVY CHECK MARK}')
         PENDING_REPLACEMENTS[sent_message] = [pilot_to_replace, replacement, crew_role]
         return False, sent_message, dupes
