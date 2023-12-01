@@ -19,7 +19,7 @@ class PilotPickerClient(discord.Client):
     LAST_USER = None
 
     async def on_ready(self):
-        global AUTHS, MISSION_CHANNELS, locked
+        global AUTHS, MISSION_CHANNELS, locked, timer
         locked = False
         INTERPOINT = self.get_guild(734728132313219183)
         mod_role = INTERPOINT.get_role(787918811784806410)
@@ -38,29 +38,37 @@ class PilotPickerClient(discord.Client):
                 channel = channel_names['open-crew-' + crew_number]    
                 MISSION_CHANNELS[role] = channel
                 print(f'Added {role.name} to dict')
+        
+        timer = asyncio.create_task(self.replacement_timer())
+
+    async def replacement_timer(self):
+        try:
+            await asyncio.sleep(REPLACEMENT_GRACE_PERIOD)
+        except asyncio.CancelledError:
+            print('Timer skipped')
 
     async def on_message(self, message):
-        global CONFIRMATION_MSG, AUTHS, locked
+        global CONFIRMATION_MSG, AUTHS, locked, timer
         if (message.author == self.user):
             return
         channel = message.channel
         if (channel.type == discord.ChannelType.private and message.author.id in AUTHS):
             if (not locked):
                 sent_message = await channel.send('Click to confirm')
-                await sent_message.add_reaction('\N{WHITE HEAVY CHECK MARK}')
+                await sent_message.add_reaction('✅')
                 CONFIRMATION_MSG = sent_message
             else:
                 await channel.send('Bot currently in use, try again later')
-        elif (channel.type == discord.ChannelType.public_thread):
+        elif (channel.type == discord.ChannelType.public_thread and message.author.id != RALF):
             if (channel.parent.id == SCHEDULE_CHANNEL_ID and message.mentions):
                 print(f'Initiating replacement of {message.mentions[0]}')
                 dupes = []
                 while (True):
                     failed, sent_message, dupes = await self.roll_replacement(message, dupes)
                     if (failed):
-                        await message.add_reaction('\N{CROSS MARK}')
+                        await message.add_reaction('❌')
                         break
-                    await asyncio.sleep(REPLACEMENT_GRACE_PERIOD)
+                    await timer
                     if (sent_message in PENDING_REPLACEMENTS.keys()):
                         await sent_message.clear_reactions()
                         await channel.send('Rerolling...', delete_after=5)
@@ -69,7 +77,7 @@ class PilotPickerClient(discord.Client):
                         break
 
     async def on_reaction_add(self, reaction, user):
-        global CONFIRMATION_MSG, LAST_USER, locked
+        global CONFIRMATION_MSG, LAST_USER, locked, timer
         if (user == self.user):
             return
         if (reaction.message == CONFIRMATION_MSG):
@@ -80,9 +88,12 @@ class PilotPickerClient(discord.Client):
         if (reaction.message in PENDING_REPLACEMENTS.keys()):
             replacement_data = PENDING_REPLACEMENTS[reaction.message]
             if(user == replacement_data[1]):
-                await self.resolve_replacement(replacement_data)
-                del PENDING_REPLACEMENTS[reaction.message]
-                await reaction.message.channel.send('Success!', delete_after=5)
+                if(reaction.emoji == '✅'):
+                    await self.resolve_replacement(replacement_data)
+                    del PENDING_REPLACEMENTS[reaction.message]
+                    await reaction.message.channel.send('Success!')
+                elif(reaction.emoji == '⏭️'):
+                    timer.cancel()
 
     async def roll_pilots(self):
         global SCHEDULE_CHANNEL_ID, NUMBER_OF_PILOTS, LAST_USER, locked
@@ -99,7 +110,7 @@ class PilotPickerClient(discord.Client):
             crew_role = (set(mission.role_mentions).intersection(MISSION_CHANNELS.keys())).pop()
             print(f'Crew role is {crew_role}')
             gm = (mission.mentions)[0]
-            await INTERPOINT.get_member(gm.id).add_roles(crew_role)
+            await gm.add_roles(crew_role)
             print(f'Added {crew_role.name} role to {gm.display_name}')
             output += (f'GM: <@{gm.id}>\nPlayers: ')
             applications = (mission.reactions)[0]
@@ -110,7 +121,7 @@ class PilotPickerClient(discord.Client):
                 if (not pilots):
                     print(f'Ran out of pilots for {crew_role}')
                     break
-                member = INTERPOINT.get_member(random.choice(pilots).id)
+                member = random.choice(pilots)
                 if (not member or member.id == RALF):
                     pilots.remove(member)
                     continue
@@ -119,7 +130,7 @@ class PilotPickerClient(discord.Client):
                     dupes.append(member)
                     pilots.remove(member)
                     try:
-                        await INTERPOINT.get_member(member.id).add_roles(crew_role)
+                        await member.add_roles(crew_role)
                         print(f'Added {crew_role.name} role to {member.display_name}')
                     except: 
                         await LAST_USER.send(f'Failed to add {crew_role} to {member.display_name}')
@@ -163,14 +174,15 @@ class PilotPickerClient(discord.Client):
                     return True, None, None
             member = random.choice(pilots)
             if (not member or member.id == RALF or crew_role in member.roles or member in dupes):
-                    print(f'{member.display_name} chosen')
                     pilots.remove(member)
                     continue
+            print(f'{member.display_name} chosen')
             replacement = member
             dupes.append(member)
             break
-        sent_message = await thread.send(f'Replacing {pilot_to_replace.display_name}, <@{replacement.id}> has been rolled as a substitute. You have 15 minutes to accept.')
-        await sent_message.add_reaction('\N{WHITE HEAVY CHECK MARK}')
+        sent_message = await thread.send(f'Replacing {pilot_to_replace.display_name}, <@{replacement.id}> has been rolled as a substitute. You have 15 minutes to accept or pass.')
+        await sent_message.add_reaction('✅')
+        await sent_message.add_reaction('⏭️')
         PENDING_REPLACEMENTS[sent_message] = [pilot_to_replace, replacement, crew_role]
         return False, sent_message, dupes
     
