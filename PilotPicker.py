@@ -7,6 +7,7 @@ GENIE = 243236171591712789
 RALF = 550523153302945792
 AUTHS = [GENIE, RALF] #accounts authorized to use the bot
 SCHEDULE_CHANNEL_ID = 1085673812663738388 #id of channel where missions get posted
+TESTING_CHANNEL_ID = int(os.getenv('TESTING_CHANNEL'))
 CONFIRMATION_MSG = None
 INTERPOINT = None
 REPLACEMENT_GRACE_PERIOD = 900 #seconds
@@ -38,8 +39,6 @@ class PilotPickerClient(discord.Client):
                 channel = channel_names['open-crew-' + crew_number]    
                 MISSION_CHANNELS[role] = channel
                 print(f'Added {role.name} to dict')
-        
-        timer = asyncio.create_task(self.replacement_timer())
 
     async def replacement_timer(self):
         try:
@@ -54,7 +53,7 @@ class PilotPickerClient(discord.Client):
         channel = message.channel
         if (channel.type == discord.ChannelType.private and message.author.id in AUTHS):
             if (not locked):
-                sent_message = await channel.send('Click to confirm')
+                sent_message = await channel.send('Click to roll open missions')
                 await sent_message.add_reaction('✅')
                 CONFIRMATION_MSG = sent_message
             else:
@@ -68,6 +67,7 @@ class PilotPickerClient(discord.Client):
                     if (failed):
                         await message.add_reaction('❌')
                         break
+                    timer = asyncio.create_task(self.replacement_timer())
                     await timer
                     if (sent_message in PENDING_REPLACEMENTS.keys()):
                         await sent_message.clear_reactions()
@@ -159,7 +159,7 @@ class PilotPickerClient(discord.Client):
         pilot_to_replace = message.mentions[0]
         thread = message.channel
         mission = await thread.parent.fetch_message(thread.id)
-        crew_role = mission.role_mentions[1]
+        crew_role = (set(mission.role_mentions).intersection(MISSION_CHANNELS.keys())).pop()
         print(f'Crew role is {crew_role.name}')
         if (crew_role not in pilot_to_replace.roles):
             print(f'Failed to roll replacement: invalid user')
@@ -200,7 +200,7 @@ class PilotPickerClient(discord.Client):
         try:
             await replacement.add_roles(crew_role)
             print(f'Added {crew_role.name} role to {replacement.display_name}')
-        except: 
+        except:
             await LAST_USER.send(f'Failed to add {crew_role} to {replacement.display_name}')
         print(f'Finished replacement for {crew_role}')
 
