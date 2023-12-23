@@ -13,14 +13,14 @@ INTERPOINT = None
 REPLACEMENT_GRACE_PERIOD = 900 #seconds
 NUMBER_OF_PILOTS = 4 #idk when this wouldn't be 4 but who knows
 MISSION_CHANNELS = {} #key: role, value: channel
-PENDING_REPLACEMENTS = {} #key: message, value: [old member, new member, role]
+PENDING_REPLACEMENTS = {} #key: message, value: [old member, new member, role, timer]
 RALF_MSG = '@everyone is now here, please read the pinned post WITH UTMOST CARE'
 
 class PilotPickerClient(discord.Client):
     LAST_USER = None
 
     async def on_ready(self):
-        global AUTHS, MISSION_CHANNELS, locked, timer
+        global AUTHS, MISSION_CHANNELS, locked
         locked = False
         INTERPOINT = self.get_guild(734728132313219183)
         mod_role = INTERPOINT.get_role(787918811784806410)
@@ -47,7 +47,7 @@ class PilotPickerClient(discord.Client):
             print('Timer skipped')
 
     async def on_message(self, message):
-        global CONFIRMATION_MSG, AUTHS, locked, timer
+        global CONFIRMATION_MSG, AUTHS, locked
         if (message.author == self.user):
             return
         channel = message.channel
@@ -59,7 +59,7 @@ class PilotPickerClient(discord.Client):
             else:
                 await channel.send('Bot currently in use, try again later')
         elif (channel.type == discord.ChannelType.public_thread and message.author.id != RALF):
-            if (channel.parent.id == SCHEDULE_CHANNEL_ID and message.mentions):
+            if (channel.parent.id == TESTING_CHANNEL_ID and message.mentions):
                 print(f'Initiating replacement of {message.mentions[0].display_name}')
                 dupes = []
                 while (True):
@@ -67,8 +67,8 @@ class PilotPickerClient(discord.Client):
                     if (failed):
                         await message.add_reaction('❌')
                         break
-                    timer = asyncio.create_task(self.replacement_timer())
-                    await timer
+                    PENDING_REPLACEMENTS[sent_message].append(asyncio.create_task(self.replacement_timer()))
+                    await PENDING_REPLACEMENTS[sent_message][3]
                     if (sent_message in PENDING_REPLACEMENTS.keys()):
                         await sent_message.clear_reactions()
                         await channel.send('Rerolling...', delete_after=5)
@@ -77,7 +77,7 @@ class PilotPickerClient(discord.Client):
                         break
 
     async def on_reaction_add(self, reaction, user):
-        global CONFIRMATION_MSG, LAST_USER, locked, timer
+        global CONFIRMATION_MSG, LAST_USER, locked
         if (user == self.user):
             return
         if (reaction.message == CONFIRMATION_MSG):
@@ -94,7 +94,7 @@ class PilotPickerClient(discord.Client):
                     await reaction.message.clear_reactions()
                     await reaction.message.channel.send('Success!')
                 elif(reaction.emoji == '⏭️'):
-                    timer.cancel()
+                    PENDING_REPLACEMENTS[reaction.message][3].cancel()
 
     async def roll_pilots(self):
         global SCHEDULE_CHANNEL_ID, NUMBER_OF_PILOTS, LAST_USER, locked
@@ -174,9 +174,12 @@ class PilotPickerClient(discord.Client):
                     await thread.send(f'Ran out of pilots to replace for {crew_role.name}')
                     return True, None, None
             member = random.choice(pilots)
-            if (not member or member.id == RALF or crew_role in member.roles or member in dupes):
-                    pilots.remove(member)
-                    continue
+            if (not member):
+                pilots.remove(member)
+                continue
+            if (member.id == RALF or crew_role in member.roles or member in dupes):
+                pilots.remove(member)
+                continue
             print(f'{member.display_name} chosen')
             replacement = member
             dupes.append(member)
