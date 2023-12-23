@@ -59,7 +59,7 @@ class PilotPickerClient(discord.Client):
             else:
                 await channel.send('Bot currently in use, try again later')
         elif (channel.type == discord.ChannelType.public_thread and message.author.id != RALF):
-            if (channel.parent.id == TESTING_CHANNEL_ID and message.mentions):
+            if (channel.parent.id == SCHEDULE_CHANNEL_ID and message.mentions):
                 print(f'Initiating replacement of {message.mentions[0].display_name}')
                 dupes = []
                 while (True):
