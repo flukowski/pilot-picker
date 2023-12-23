@@ -13,7 +13,7 @@ INTERPOINT = None
 REPLACEMENT_GRACE_PERIOD = 900 #seconds
 NUMBER_OF_PILOTS = 4 #idk when this wouldn't be 4 but who knows
 MISSION_CHANNELS = {} #key: role, value: channel
-PENDING_REPLACEMENTS = {}#key: message, value: [old member, new member, role]
+PENDING_REPLACEMENTS = {} #key: message, value: [old member, new member, role]
 RALF_MSG = '@everyone is now here, please read the pinned post WITH UTMOST CARE'
 
 class PilotPickerClient(discord.Client):
@@ -60,7 +60,7 @@ class PilotPickerClient(discord.Client):
                 await channel.send('Bot currently in use, try again later')
         elif (channel.type == discord.ChannelType.public_thread and message.author.id != RALF):
             if (channel.parent.id == SCHEDULE_CHANNEL_ID and message.mentions):
-                print(f'Initiating replacement of {message.mentions[0]}')
+                print(f'Initiating replacement of {message.mentions[0].display_name}')
                 dupes = []
                 while (True):
                     failed, sent_message, dupes = await self.roll_replacement(message, dupes)
@@ -91,6 +91,7 @@ class PilotPickerClient(discord.Client):
                 if(reaction.emoji == '✅'):
                     await self.resolve_replacement(replacement_data)
                     del PENDING_REPLACEMENTS[reaction.message]
+                    await reaction.message.clear_reactions()
                     await reaction.message.channel.send('Success!')
                 elif(reaction.emoji == '⏭️'):
                     timer.cancel()
