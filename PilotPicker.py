@@ -3,27 +3,35 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
+LINK_PREFIX = 'https://discord.com/channels/734728132313219183/1105416342368169985/'
 GENIE = 243236171591712789
 RALF = 550523153302945792
-AUTHS = [GENIE, RALF] #accounts authorized to use the bot
-SCHEDULE_CHANNEL_ID = 1085673812663738388 #id of channel where missions get posted
+AUTHS = [RALF] #accounts authorized to use the bot
+OPEN_MISSION_CHANNEL_ID = 1085673812663738388 #id of channel where open missions get posted
+WILD_WEST_CHANNEL_ID = 1105416342368169985
 TESTING_CHANNEL_ID = int(os.getenv('TESTING_CHANNEL'))
-CONFIRMATION_MSG = None
 INTERPOINT = None
 REPLACEMENT_GRACE_PERIOD = 900 #seconds
 NUMBER_OF_PILOTS = 4 #idk when this wouldn't be 4 but who knows
-MISSION_CHANNELS = {} #key: role, value: channel
+OPEN_MISSION_CHANNELS = {} #key: role, value: channel
+WILD_WEST_CHANNELS = {} #key: role, value: channel
 PENDING_REPLACEMENTS = {} #key: message, value: [old member, new member, role, timer]
 RALF_MSG = '@everyone is now here, please read the pinned post WITH UTMOST CARE'
+HELP_MSG = '''```
+?help - shows list of commands \n
+?roll_ww (link to mission post) (optional: number of pilots to roll if not 4) - rolls pilots for the linked wild west game \n
+?roll_open - rolls all new open missions \n
+(ping a player in an open mission thread) - replace that player, substitutes randomly chosen every 15 minutes```'''
 
 class PilotPickerClient(discord.Client):
     LAST_USER = None
 
     async def on_ready(self):
-        global AUTHS, MISSION_CHANNELS, locked
+        global locked
         locked = False
         INTERPOINT = self.get_guild(734728132313219183)
         mod_role = INTERPOINT.get_role(787918811784806410)
+
         for moderator in mod_role.members:
             AUTHS.append(moderator.id)
             print(f'Added {moderator.display_name} to moderator list')
@@ -37,8 +45,14 @@ class PilotPickerClient(discord.Client):
                 if (int(crew_number) < 10):
                     crew_number = '0' + crew_number
                 channel = channel_names['open-crew-' + crew_number]    
-                MISSION_CHANNELS[role] = channel
-                print(f'Added {role.name} to dict')
+                OPEN_MISSION_CHANNELS[role] = channel
+                print(f'Added {role.name} to open mission dict')
+
+            elif ('CowboyCrew' in role.name):
+                crew_number = re.findall(r'\d+', role.name)[0]
+                channel = channel_names['cowboy-crew-' + crew_number]    
+                WILD_WEST_CHANNELS[role] = channel
+                print(f'Added {role.name} to wild west dict')
 
     async def replacement_timer(self):
         try:
@@ -46,20 +60,26 @@ class PilotPickerClient(discord.Client):
         except asyncio.CancelledError:
             print('Timer skipped')
 
-    async def on_message(self, message):
-        global CONFIRMATION_MSG, AUTHS, locked
+    async def on_message(self, message: discord.Message):
+        global LAST_USER
         if (message.author == self.user):
             return
         channel = message.channel
         if (channel.type == discord.ChannelType.private and message.author.id in AUTHS):
-            if (not locked):
-                sent_message = await channel.send('Click to roll open missions')
-                await sent_message.add_reaction('✅')
-                CONFIRMATION_MSG = sent_message
-            else:
-                await channel.send('Bot currently in use, try again later')
+            print(f'{message.author}: {message.content}')
+            if (message.content.startswith('?help')):
+                await message.channel.send(HELP_MSG)
+            elif (message.content.startswith('?roll_ww')):
+                await self.roll_wild_west(message)
+            elif (message.content.startswith('?roll_open')):
+                if (not locked):
+                    locked = True
+                    LAST_USER = message.author
+                    await self.roll_open_missions()
+                else:
+                    await channel.send('Already rolling open missions, try again later')
         elif (channel.type == discord.ChannelType.public_thread and message.author.id != RALF):
-            if (channel.parent.id == SCHEDULE_CHANNEL_ID and message.mentions):
+            if (channel.parent.id == OPEN_MISSION_CHANNEL_ID and message.mentions):
                 print(f'Initiating replacement of {message.mentions[0].display_name}')
                 dupes = []
                 while (True):
@@ -77,14 +97,9 @@ class PilotPickerClient(discord.Client):
                         break
 
     async def on_reaction_add(self, reaction, user):
-        global CONFIRMATION_MSG, LAST_USER, locked
+        global LAST_USER, locked
         if (user == self.user):
             return
-        if (reaction.message == CONFIRMATION_MSG):
-            locked = True
-            LAST_USER = user
-            await self.roll_pilots()
-            CONFIRMATION_MSG = None
         if (reaction.message in PENDING_REPLACEMENTS.keys()):
             replacement_data = PENDING_REPLACEMENTS[reaction.message]
             if(user == replacement_data[1]):
@@ -96,9 +111,9 @@ class PilotPickerClient(discord.Client):
                 elif(reaction.emoji == '⏭️'):
                     PENDING_REPLACEMENTS[reaction.message][3].cancel()
 
-    async def roll_pilots(self):
-        global SCHEDULE_CHANNEL_ID, NUMBER_OF_PILOTS, LAST_USER, locked
-        schedule = self.get_channel(SCHEDULE_CHANNEL_ID)
+    async def roll_open_missions(self):
+        global locked
+        schedule = self.get_channel(OPEN_MISSION_CHANNEL_ID)
         rollable_missions = []
         await LAST_USER.send('Rolling pilots...')
         async for mission_post in schedule.history(limit=30):
@@ -108,7 +123,7 @@ class PilotPickerClient(discord.Client):
         dupes = []
         for mission in rollable_missions:
             output = ''
-            crew_role = (set(mission.role_mentions).intersection(MISSION_CHANNELS.keys())).pop()
+            crew_role = (set(mission.role_mentions).intersection(OPEN_MISSION_CHANNELS.keys())).pop()
             print(f'Crew role is {crew_role}')
             gm = (mission.mentions)[0]
             await gm.add_roles(crew_role)
@@ -147,7 +162,7 @@ class PilotPickerClient(discord.Client):
             async for threadmsg in schedule.history(limit=1):
                 if (threadmsg.type == discord.MessageType.thread_created):
                     await threadmsg.delete()
-            mission_channel = MISSION_CHANNELS[crew_role]
+            mission_channel = OPEN_MISSION_CHANNELS[crew_role]
             try:
                 await mission_channel.send(RALF_MSG)
             except:
@@ -155,12 +170,76 @@ class PilotPickerClient(discord.Client):
         await LAST_USER.send('All done!')
         dupes.clear()
         locked = False
+    
+    async def roll_wild_west(self, message: discord.Message):
+        schedule = self.get_partial_messageable(WILD_WEST_CHANNEL_ID)
+        number_of_pilots = NUMBER_OF_PILOTS
+        link_index = message.content.find(LINK_PREFIX)
+        if (link_index == -1):
+            await message.channel.send('Couldn\'t find that game, sorry!')
+            return
+        arguments = message.content[link_index + len(LINK_PREFIX):].split(' ')
+        if (len(arguments) > 1):
+            number_of_pilots = re.findall(r'\d+', arguments[1])[0]
+        print(f'mission roster size: {number_of_pilots}')
+        mission = await schedule.fetch_message(arguments[0])
+        if (mission.flags.has_thread):
+            await message.channel.send('Looks like that mission already got rolled ¯\_(ツ)_/¯')
+            print('stopped: already rolled')
+            return
+
+        output = ''
+        try:
+            crew_role = (set(mission.role_mentions).intersection(WILD_WEST_CHANNELS.keys())).pop()
+        except:
+            await message.channel.send('Missing crew role')
+            print('stopped: missing crew role')
+            return
+        print(f'Crew role is {crew_role}')
+        gm = (mission.mentions)[0]
+        await gm.add_roles(crew_role)
+        print(f'Added {crew_role.name} role to {gm.display_name}')
+        output += (f'GM: <@{gm.id}>\nPlayers: ')
+        applications = (mission.reactions)[0]
+        pilots = [user async for user in applications.users()]
+        pilot_count = 0
+        while (pilot_count < number_of_pilots):
+            if (not pilots):
+                print(f'Ran out of pilots for {crew_role}')
+                break
+            member = random.choice(pilots)
+            if (not member or member.id == RALF):
+                pilots.remove(member)
+                continue
+            output += (f'<@{member.id}> ')
+            pilots.remove(member)
+            try:
+                await member.add_roles(crew_role)
+                print(f'Added {crew_role.name} role to {member.display_name}')
+            except:
+                print(f'Failed to add {crew_role} to {member.display_name}')
+            pilot_count += 1
+            continue
+        thread = await mission.create_thread(name = 'Applications Closed')
+        await thread.send(output)
+        async for threadmsg in schedule.history(limit=1):
+            if (threadmsg.type == discord.MessageType.thread_created):
+                await threadmsg.delete()
+        mission_channel = OPEN_MISSION_CHANNELS[crew_role]
+        try:
+            await mission_channel.send(RALF_MSG)
+        except:
+            await print(f'Failed to send message in {mission_channel.name}')
+        await message.delete()
 
     async def roll_replacement(self, message, dupes):
         pilot_to_replace = message.mentions[0]
-        thread = message.channel
+        thread = message.channel   
         mission = await thread.parent.fetch_message(thread.id)
-        crew_role = (set(mission.role_mentions).intersection(MISSION_CHANNELS.keys())).pop()
+        if (thread.parent.id == WILD_WEST_CHANNEL_ID):
+            crew_role = (set(mission.role_mentions).intersection(WILD_WEST_CHANNELS.keys())).pop()
+        else:
+            crew_role = (set(mission.role_mentions).intersection(OPEN_MISSION_CHANNELS.keys())).pop()
         print(f'Crew role is {crew_role.name}')
         if (crew_role not in pilot_to_replace.roles):
             print(f'Failed to roll replacement: invalid user')
