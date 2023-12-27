@@ -61,7 +61,7 @@ class PilotPickerClient(discord.Client):
             print('Timer skipped')
 
     async def on_message(self, message: discord.Message):
-        global LAST_USER
+        global LAST_USER, locked
         if (message.author == self.user):
             return
         channel = message.channel
@@ -97,7 +97,7 @@ class PilotPickerClient(discord.Client):
                         break
 
     async def on_reaction_add(self, reaction, user):
-        global LAST_USER, locked
+        global LAST_USER
         if (user == self.user):
             return
         if (reaction.message in PENDING_REPLACEMENTS.keys()):
