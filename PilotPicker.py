@@ -6,16 +6,16 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 LINK_PREFIX = 'https://discord.com/channels/734728132313219183/1105416342368169985/'
 GENIE = 243236171591712789
 RALF = 550523153302945792
-AUTHS = [RALF] #accounts authorized to use the bot
-OPEN_MISSION_CHANNEL_ID = 1085673812663738388 #id of channel where open missions get posted
+AUTHS = [RALF] # accounts authorized to use the bot
+OPEN_MISSION_CHANNEL_ID = 1085673812663738388 # id of channel where open missions get posted
 WILD_WEST_CHANNEL_ID = 1105416342368169985
 TESTING_CHANNEL_ID = int(os.getenv('TESTING_CHANNEL'))
 INTERPOINT = None
-REPLACEMENT_GRACE_PERIOD = 900 #seconds
-NUMBER_OF_PILOTS = 4 #idk when this wouldn't be 4 but who knows
-OPEN_MISSION_CHANNELS = {} #key: role, value: channel
-WILD_WEST_CHANNELS = {} #key: role, value: channel
-PENDING_REPLACEMENTS = {} #key: message, value: [old member, new member, role, timer]
+REPLACEMENT_GRACE_PERIOD = 900 # seconds
+NUMBER_OF_PILOTS = 4 # idk when this wouldn't be 4 but who knows
+OPEN_MISSION_CHANNELS = {} # key: role, value: channel
+WILD_WEST_CHANNELS = {} # key: role, value: channel
+PENDING_REPLACEMENTS = {} # key: message, value: [old member, new member, role, timer]
 RALF_MSG = '@everyone is now here, please read the pinned post WITH UTMOST CARE'
 HELP_MSG = '''```
 ?help - shows list of commands \n
@@ -39,7 +39,9 @@ class PilotPickerClient(discord.Client):
         channel_names = {}
         for channel in INTERPOINT.channels:
             channel_names[channel.name] = channel
+
         for role in INTERPOINT.roles:
+
             if ('Open' in role.name and ' Crew' in role.name):
                 crew_number = re.findall(r'\d+', role.name)[0]
                 if (int(crew_number) < 10):
@@ -64,35 +66,45 @@ class PilotPickerClient(discord.Client):
         global LAST_USER, locked
         if (message.author == self.user):
             return
+        
         channel = message.channel
         if (channel.type == discord.ChannelType.private and message.author.id in AUTHS):
             print(f'{message.author}: {message.content}')
+
             if (message.content.startswith('?help')):
                 await message.channel.send(HELP_MSG)
+
             elif (message.content.startswith('?roll_ww')):
                 await self.roll_wild_west(message)
+
             elif (message.content.startswith('?roll_open')):
                 if (not locked):
                     locked = True
                     LAST_USER = message.author
                     await self.roll_open_missions()
+
                 else:
                     await channel.send('Already rolling open missions, try again later')
+
         elif (channel.type == discord.ChannelType.public_thread and message.author.id != RALF):
             if (channel.parent.id == OPEN_MISSION_CHANNEL_ID and message.mentions):
                 print(f'Initiating replacement of {message.mentions[0].display_name}')
+
                 dupes = []
                 while (True):
                     failed, sent_message, dupes = await self.roll_replacement(message, dupes)
                     if (failed):
                         await message.add_reaction('❌')
                         break
+
                     PENDING_REPLACEMENTS[sent_message].append(asyncio.create_task(self.replacement_timer()))
-                    await PENDING_REPLACEMENTS[sent_message][3]
+                    await PENDING_REPLACEMENTS[sent_message][3] # start the timer
+
                     if (sent_message in PENDING_REPLACEMENTS.keys()):
                         await sent_message.clear_reactions()
                         await channel.send('Rerolling...', delete_after=5)
                         del PENDING_REPLACEMENTS[sent_message]
+
                     else:
                         break
 
@@ -116,10 +128,12 @@ class PilotPickerClient(discord.Client):
         schedule = self.get_channel(OPEN_MISSION_CHANNEL_ID)
         rollable_missions = []
         await LAST_USER.send('Rolling pilots...')
+
         async for mission_post in schedule.history(limit=30):
             if (not mission_post.flags.has_thread): 
                 rollable_missions.append(mission_post)
                 print(f'Added {mission_post.id} to mission list')
+                
         dupes = []
         for mission in rollable_missions:
             output = ''
@@ -179,14 +193,14 @@ class PilotPickerClient(discord.Client):
             await message.channel.send('Couldn\'t find that game, sorry!')
             return
         arguments = message.content[link_index + len(LINK_PREFIX):].split(' ')
-        if (len(arguments) > 1):
-            number_of_pilots = re.findall(r'\d+', arguments[1])[0]
-        print(f'mission roster size: {number_of_pilots}')
         mission = await schedule.fetch_message(arguments[0])
         if (mission.flags.has_thread):
             await message.channel.send('Looks like that mission already got rolled ¯\_(ツ)_/¯')
             print('stopped: already rolled')
             return
+        if (arguments[1]):
+            number_of_pilots = re.findall(r'\d+', arguments[1])[0]
+        print(f'mission roster size: {number_of_pilots}')
 
         output = ''
         try:
@@ -273,13 +287,13 @@ class PilotPickerClient(discord.Client):
         pilot_to_replace = replacement_data[0]
         replacement = replacement_data[1]
         crew_role = replacement_data[2]
-        #remove role from old player
+        # remove role from old player
         try:
             await pilot_to_replace.remove_roles(crew_role)
             print(f'Removed {crew_role.name} role from {pilot_to_replace.display_name}')
         except: 
             await LAST_USER.send(f'Failed to remove {crew_role} from {pilot_to_replace.display_name}')
-        #give role to replacement
+        # give role to replacement
         try:
             await replacement.add_roles(crew_role)
             print(f'Added {crew_role.name} role to {replacement.display_name}')
