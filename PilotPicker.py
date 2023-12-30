@@ -198,7 +198,7 @@ class PilotPickerClient(discord.Client):
             await message.channel.send('Looks like that mission already got rolled ¯\_(ツ)_/¯')
             print('stopped: already rolled')
             return
-        if (arguments[1]):
+        if (len(arguments)>1):
             number_of_pilots = re.findall(r'\d+', arguments[1])[0]
         print(f'mission roster size: {number_of_pilots}')
 
