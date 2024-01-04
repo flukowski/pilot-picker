@@ -185,8 +185,8 @@ class PilotPickerClient(discord.Client):
         dupes.clear()
         locked = False
     
-    async def roll_wild_west(self, message: discord.Message):
-        schedule = self.get_partial_messageable(WILD_WEST_CHANNEL_ID)
+    async def roll_wild_west(self, message):
+        schedule = self.get_channel(WILD_WEST_CHANNEL_ID)
         number_of_pilots = NUMBER_OF_PILOTS
         link_index = message.content.find(LINK_PREFIX)
         if (link_index == -1):
@@ -194,6 +194,7 @@ class PilotPickerClient(discord.Client):
             return
         arguments = message.content[link_index + len(LINK_PREFIX):].split(' ')
         mission = await schedule.fetch_message(arguments[0])
+        print(mission)
         if (mission.flags.has_thread):
             await message.channel.send('Looks like that mission already got rolled ¯\_(ツ)_/¯')
             print('stopped: already rolled')
@@ -204,6 +205,8 @@ class PilotPickerClient(discord.Client):
 
         output = ''
         try:
+            print(mission.role_mentions)
+            print(WILD_WEST_CHANNELS.keys())
             crew_role = (set(mission.role_mentions).intersection(WILD_WEST_CHANNELS.keys())).pop()
         except:
             await message.channel.send('Missing crew role')
@@ -239,12 +242,6 @@ class PilotPickerClient(discord.Client):
         async for threadmsg in schedule.history(limit=1):
             if (threadmsg.type == discord.MessageType.thread_created):
                 await threadmsg.delete()
-        mission_channel = OPEN_MISSION_CHANNELS[crew_role]
-        try:
-            await mission_channel.send(RALF_MSG)
-        except:
-            await print(f'Failed to send message in {mission_channel.name}')
-        await message.delete()
 
     async def roll_replacement(self, message, dupes):
         pilot_to_replace = message.mentions[0]
