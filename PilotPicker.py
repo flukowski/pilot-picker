@@ -9,7 +9,10 @@ RALF = 550523153302945792
 AUTHS = [RALF] # accounts authorized to use the bot
 OPEN_MISSION_CHANNEL_ID = 1085673812663738388 # id of channel where open missions get posted
 WILD_WEST_CHANNEL_ID = 1105416342368169985
-TESTING_CHANNEL_ID = int(os.getenv('TESTING_CHANNEL'))
+try:
+    TESTING_CHANNEL_ID = int(os.getenv('TESTING_CHANNEL'))
+except Exception:
+    print("No testing channel enviornment variable found (this is fine)")
 INTERPOINT = None
 REPLACEMENT_GRACE_PERIOD = 900 # seconds
 NUMBER_OF_PILOTS = 4 # idk when this wouldn't be 4 but who knows
@@ -21,7 +24,7 @@ HELP_MSG = '''```
 ?help - shows list of commands \n
 ?roll_ww (link to mission post) (optional: number of pilots to roll if not 4) - rolls pilots for the linked wild west game \n
 ?roll_open - rolls all new open missions \n
-(ping a player in an open mission thread) - replace that player, substitutes randomly chosen every 15 minutes```'''
+(ping a player in an open mission or wild west thread) - replace that player, substitutes randomly chosen every 15 minutes```'''
 
 class PilotPickerClient(discord.Client):
     LAST_USER = None
@@ -82,7 +85,6 @@ class PilotPickerClient(discord.Client):
                     locked = True
                     LAST_USER = message.author
                     await self.roll_open_missions()
-
                 else:
                     await channel.send('Already rolling open missions, try again later')
 
@@ -104,7 +106,6 @@ class PilotPickerClient(discord.Client):
                         await sent_message.clear_reactions()
                         await channel.send('Rerolling...', delete_after=5)
                         del PENDING_REPLACEMENTS[sent_message]
-
                     else:
                         break
 
@@ -117,7 +118,6 @@ class PilotPickerClient(discord.Client):
             replacement_data = PENDING_REPLACEMENTS[reaction.message]
 
             if(user == replacement_data[1]):
-
                 if(reaction.emoji == '✅'):
                     await self.resolve_replacement(replacement_data)
                     del PENDING_REPLACEMENTS[reaction.message]
@@ -142,7 +142,6 @@ class PilotPickerClient(discord.Client):
         for mission in rollable_missions:
             try:
                 crew_role = (set(mission.role_mentions).intersection(OPEN_MISSION_CHANNELS.keys())).pop()
-
             except:
                 print(f'failed to roll {mission.id}: missing crew role')
                 continue
@@ -177,7 +176,6 @@ class PilotPickerClient(discord.Client):
                     try:
                         await member.add_roles(crew_role)
                         print(f'Added {crew_role.name} role to {member.display_name}')
-
                     except: 
                         await LAST_USER.send(f'Failed to add {crew_role} to {member.display_name}')
                     pilot_count += 1
@@ -187,7 +185,7 @@ class PilotPickerClient(discord.Client):
                     print('Allowing duplicates')
                     dupes_needed = True
 
-            await LAST_USER.send(f'Mission {crew_role} complete')
+            print(f'Mission {crew_role} complete')
             thread = await mission.create_thread(name = 'Applications Closed')
             await thread.send(output)
 
@@ -199,7 +197,7 @@ class PilotPickerClient(discord.Client):
             try:
                 await mission_channel.send(RALF_MSG)
             except:
-                await LAST_USER.send(f'Failed to send message in {mission_channel.name}')
+                print(f'Failed to send message in {mission_channel.name}')
 
         await LAST_USER.send('All done!')
         locked = False
@@ -215,7 +213,6 @@ class PilotPickerClient(discord.Client):
         
         arguments = message.content[link_index + len(LINK_PREFIX):].split(' ')
         mission = await schedule.fetch_message(arguments[0])
-        print(mission)
 
         if (mission.flags.has_thread):
             await message.channel.send('Looks like that mission already got rolled ¯\_(ツ)_/¯')
@@ -228,7 +225,6 @@ class PilotPickerClient(discord.Client):
 
         try:
             crew_role = (set(mission.role_mentions).intersection(WILD_WEST_CHANNELS.keys())).pop()
-
         except:
             await message.channel.send('Missing crew role')
             print('stopped: missing crew role')
@@ -251,7 +247,7 @@ class PilotPickerClient(discord.Client):
 
             member = random.choice(pilots)
 
-            if (not member or member.id == RALF):
+            if (not member or member.id == mission.author.id):
                 pilots.remove(member)
                 continue
             output += (f'<@{member.id}> ')
@@ -260,7 +256,6 @@ class PilotPickerClient(discord.Client):
             try:
                 await member.add_roles(crew_role)
                 print(f'Added {crew_role.name} role to {member.display_name}')
-
             except:
                 print(f'Failed to add {crew_role} to {member.display_name}')
 
@@ -272,10 +267,11 @@ class PilotPickerClient(discord.Client):
         async for threadmsg in schedule.history(limit=1):
             if (threadmsg.type == discord.MessageType.thread_created):
                 await threadmsg.delete()
+        await message.channel.send('All done!')
 
     async def roll_replacement(self, message, dupes):
         pilot_to_replace = message.mentions[0]
-        thread = message.channel   
+        thread = message.channel
         mission = await thread.parent.fetch_message(thread.id)
 
         if (thread.parent.id == WILD_WEST_CHANNEL_ID):
@@ -312,7 +308,7 @@ class PilotPickerClient(discord.Client):
             replacement = member
             dupes.append(member)
             break
-        
+
         sent_message = await thread.send(f'Replacing {pilot_to_replace.display_name}, <@{replacement.id}> has been rolled as a substitute. You have 15 minutes to accept or pass.')
         await sent_message.add_reaction('✅')
         await sent_message.add_reaction('⏭️')
@@ -323,18 +319,18 @@ class PilotPickerClient(discord.Client):
         pilot_to_replace = replacement_data[0]
         replacement = replacement_data[1]
         crew_role = replacement_data[2]
-        # remove role from old player
+
         try:
             await pilot_to_replace.remove_roles(crew_role)
             print(f'Removed {crew_role.name} role from {pilot_to_replace.display_name}')
         except: 
-            await LAST_USER.send(f'Failed to remove {crew_role} from {pilot_to_replace.display_name}')
-        # give role to replacement
+            print(f'Failed to remove {crew_role} from {pilot_to_replace.display_name}')
+            
         try:
             await replacement.add_roles(crew_role)
             print(f'Added {crew_role.name} role to {replacement.display_name}')
         except:
-            await LAST_USER.send(f'Failed to add {crew_role} to {replacement.display_name}')
+            print(f'Failed to add {crew_role} to {replacement.display_name}')
         print(f'Finished replacement for {crew_role}')
 
 intents = discord.Intents.default()
