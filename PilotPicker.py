@@ -27,17 +27,18 @@ HELP_MSG = '''```
 (ping a player in an open mission or wild west thread) - replace that player, substitutes randomly chosen every 15 minutes```'''
 
 class PilotPickerClient(discord.Client):
-    LAST_USER = None
+    last_user = None
 
     async def on_ready(self):
-        global locked
+        global locked, INTERPOINT
         locked = False
         INTERPOINT = self.get_guild(734728132313219183)
         mod_role = INTERPOINT.get_role(787918811784806410)
+        caretaker_role = INTERPOINT.get_role(1216005988738666536)
 
-        for moderator in mod_role.members:
-            AUTHS.append(moderator.id)
-            print(f'Added {moderator.display_name} to moderator list')
+        for user in set(mod_role.members).union(set(caretaker_role.members)):
+            AUTHS.append(user.id)
+            print(f'Added {user.display_name} to user list')
 
         channel_names = {}
         for channel in INTERPOINT.channels:
@@ -46,12 +47,15 @@ class PilotPickerClient(discord.Client):
         for role in INTERPOINT.roles:
 
             if ('Open' in role.name and ' Crew' in role.name):
-                crew_number = re.findall(r'\d+', role.name)[0]
-                if (int(crew_number) < 10):
-                    crew_number = '0' + crew_number
-                channel = channel_names['open-crew-' + crew_number]    
-                OPEN_MISSION_CHANNELS[role] = channel
-                print(f'Added {role.name} to open mission dict')
+                try:
+                    crew_number = re.findall(r'\d+', role.name)[0]
+                    if (int(crew_number) < 10):
+                        crew_number = '0' + crew_number
+                    channel = channel_names['open-crew-' + crew_number]    
+                    OPEN_MISSION_CHANNELS[role] = channel
+                    print(f'Added {role.name} to open mission dict')
+                except(Exception):
+                    continue
 
             elif ('CowboyCrew' in role.name):
                 crew_number = re.findall(r'\d+', role.name)[0]
@@ -88,7 +92,7 @@ class PilotPickerClient(discord.Client):
                 else:
                     await channel.send('Already rolling open missions, try again later')
 
-        elif (channel.type == discord.ChannelType.public_thread and message.mentions):
+        elif (channel.type == discord.ChannelType.public_thread and message.mentions and message.author.id in AUTHS):
             if (channel.parent.id == OPEN_MISSION_CHANNEL_ID or channel.parent.id == WILD_WEST_CHANNEL_ID):
                 print(f'Initiating replacement of {message.mentions[0].display_name}')
 
@@ -133,8 +137,8 @@ class PilotPickerClient(discord.Client):
         rollable_missions = []
         await LAST_USER.send('Rolling pilots...')
 
-        async for mission_post in schedule.history(limit=30):
-            if (not mission_post.flags.has_thread): 
+        async for mission_post in schedule.history(limit=100):
+            if (not mission_post.flags.has_thread):
                 rollable_missions.append(mission_post)
                 print(f'Added {mission_post.id} to mission list')
                 
@@ -163,8 +167,9 @@ class PilotPickerClient(discord.Client):
                     break
 
                 member = random.choice(pilots)
+                member = INTERPOINT.get_member(member.id)
 
-                if (not member or member.id == RALF):
+                if (not member or member.id == RALF or member == gm):
                     pilots.remove(member)
                     continue
 
@@ -271,6 +276,7 @@ class PilotPickerClient(discord.Client):
 
     async def roll_replacement(self, message, dupes):
         pilot_to_replace = message.mentions[0]
+        
         thread = message.channel
         mission = await thread.parent.fetch_message(thread.id)
 
@@ -280,9 +286,7 @@ class PilotPickerClient(discord.Client):
             crew_role = (set(mission.role_mentions).intersection(OPEN_MISSION_CHANNELS.keys())).pop()
         print(f'Crew role is {crew_role.name}')
 
-        if (crew_role not in pilot_to_replace.roles):
-            print(f'Failed to roll replacement: invalid user')
-            await thread.send('Failed to roll replacement: invalid user')
+        if crew_role not in pilot_to_replace.roles:
             return True, None, None
         
         applications = (mission.reactions)[0]
@@ -295,12 +299,13 @@ class PilotPickerClient(discord.Client):
                     return True, None, None
             
             member = random.choice(pilots)
+            member = INTERPOINT.get_member(member.id)
 
             if (not member):
                 pilots.remove(member)
                 continue
 
-            if (member.id == RALF or crew_role in member.roles or member in dupes):
+            if (member.id == RALF or member.id == pilot_to_replace.id or crew_role in member.roles or member in dupes):
                 pilots.remove(member)
                 continue
 
@@ -325,7 +330,7 @@ class PilotPickerClient(discord.Client):
             print(f'Removed {crew_role.name} role from {pilot_to_replace.display_name}')
         except: 
             print(f'Failed to remove {crew_role} from {pilot_to_replace.display_name}')
-            
+
         try:
             await replacement.add_roles(crew_role)
             print(f'Added {crew_role.name} role to {replacement.display_name}')
