@@ -6,7 +6,6 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 LINK_PREFIX = 'https://discord.com/channels/734728132313219183/1105416342368169985/'
 GENIE = 243236171591712789
 RALF = 550523153302945792
-AUTHS = [RALF] # accounts authorized to use the bot
 OPEN_MISSION_CHANNEL_ID = 1085673812663738388 # id of channel where open missions get posted
 WILD_WEST_CHANNEL_ID = 1105416342368169985
 try:
@@ -33,12 +32,6 @@ class PilotPickerClient(discord.Client):
         global locked, INTERPOINT
         locked = False
         INTERPOINT = self.get_guild(734728132313219183)
-        mod_role = INTERPOINT.get_role(787918811784806410)
-        caretaker_role = INTERPOINT.get_role(1216005988738666536)
-
-        for user in set(mod_role.members).union(set(caretaker_role.members)):
-            AUTHS.append(user.id)
-            print(f'Added {user.display_name} to user list')
 
         channel_names = {}
         for channel in INTERPOINT.channels:
@@ -63,6 +56,13 @@ class PilotPickerClient(discord.Client):
                 WILD_WEST_CHANNELS[role] = channel
                 print(f'Added {role.name} to wild west dict')
 
+    async def is_authorized(self, user):
+        if user.id == RALF:
+            return True
+        # Convert User to Member to access roles
+        member = await INTERPOINT.fetch_member(user.id)
+        return any(role.id in [787918811784806410, 1216005988738666536] for role in member.roles)
+
     async def replacement_timer(self):
         try:
             await asyncio.sleep(REPLACEMENT_GRACE_PERIOD)
@@ -75,7 +75,7 @@ class PilotPickerClient(discord.Client):
             return
         
         channel = message.channel
-        if (channel.type == discord.ChannelType.private and message.author.id in AUTHS):
+        if (channel.type == discord.ChannelType.private and await self.is_authorized(message.author)):
             print(f'{message.author}: {message.content}')
 
             if (message.content.startswith('?help')):
@@ -92,7 +92,7 @@ class PilotPickerClient(discord.Client):
                 else:
                     await channel.send('Already rolling open missions, try again later')
 
-        elif (channel.type == discord.ChannelType.public_thread and message.mentions and message.author.id in AUTHS):
+        elif (channel.type == discord.ChannelType.public_thread and message.mentions and await self.is_authorized(message.author)):
             if (channel.parent.id == OPEN_MISSION_CHANNEL_ID or channel.parent.id == WILD_WEST_CHANNEL_ID):
                 print(f'Initiating replacement of {message.mentions[0].display_name}')
 
